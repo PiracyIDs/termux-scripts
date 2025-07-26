@@ -66,7 +66,7 @@ jobs:
         run: |
           if [ ! -f apktool.jar ]; then
             echo "apktool.jar not found, downloading..."
-            wget -q --show-progress https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.10.0.jar -O apktool.jar
+            wget -q --show-progress https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.12.0.jar -O apktool.jar
           fi
 
       - name: Decompile APK
