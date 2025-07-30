@@ -1,7 +1,11 @@
 #!/data/data/com.termux/files/usr/bin/python
+
 # Telegram Patcher script in python
 # @author: Abhi (@AbhiTheModder)
+
 # Patch credits:  @Zylern_OP, @rezaAa1177, @AbhiTheModder and Nekogram
+
+
 import argparse
 import os
 import re
@@ -18,57 +22,85 @@ HOOK_SMALI = """
 .super Ljava/lang/Object;
 .source "SourceFile"
 
+
 # static fields
 .field public static candelMessages:Z
+
 
 # direct methods
 .method public constructor <init>()V
     .registers 1
+
     invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+
     return-void
 .end method
 
 .method public static hook()V
     .registers 1
+
     const/4 v0, 0x1
+
     .line 17
     invoke-static {v0}, Lorg/telegram/abhi/Hook;->setCanDelMessages(Z)V
+
     return-void
 .end method
 
 .method public static setCanDelMessages(Z)V
     .registers 4
+
     sput-boolean p0, Lorg/telegram/abhi/Hook;->candelMessages:Z
+
     sget-object v0, Lorg/telegram/messenger/ApplicationLoader;->applicationContext:Landroid/content/Context;
+
     const-string v1, "mainconfig"
+
     const/4 v2, 0x0
+
     invoke-virtual {v0, v1, v2}, Landroid/content/Context;->getSharedPreferences(Ljava/lang/String;I)Landroid/content/SharedPreferences;
+
     move-result-object v0
+
     invoke-interface {v0}, Landroid/content/SharedPreferences;->edit()Landroid/content/SharedPreferences$Editor;
+
     move-result-object v0
+
     const-string v1, "candelMessages"
+
     invoke-interface {v0, v1, p0}, Landroid/content/SharedPreferences$Editor;->putBoolean(Ljava/lang/String;Z)Landroid/content/SharedPreferences$Editor;
+
     move-result-object v0
+
     invoke-interface {v0}, Landroid/content/SharedPreferences$Editor;->apply()V
+
     return-void
 .end method
 
 .method public static unhook()V
     .registers 1
+
     .line 23
     sget-boolean v0, Lorg/telegram/abhi/Hook;->candelMessages:Z
+
     if-eqz v0, :cond_8
+
     const/4 v0, 0x0
+
     .line 24
     invoke-static {v0}, Lorg/telegram/abhi/Hook;->setCanDelMessages(Z)V
+
     :cond_8
     return-void
 .end method
 """
 
+
 class NoMethodFoundError(Exception):
     """Exception raised when the method is not found in the file."""
+
     pass
+
 
 def find_smali_file(root_directory, target_file):
     """Recursively search for the target file within the root directory."""
@@ -77,153 +109,170 @@ def find_smali_file(root_directory, target_file):
             return os.path.join(dirpath, target_file)
     return None
 
+
 def find_smali_file_by_method(root_directory, method_name):
     """Recursively search for the method in any smali file within the root directory."""
     for dirpath, _, filenames in os.walk(root_directory):
         for filename in filenames:
             if filename.endswith(".smali"):
                 file_path = os.path.join(dirpath, filename)
-                try:
-                    with open(file_path, "r", encoding='utf-8', errors='ignore') as file:
-                        file_content = file.read()
-                        if method_name in file_content:
-                            return file_path
-                except IOError as e:
-                    print(f"{RED}ERROR: {NC}Could not read file {file_path}: {e}")
+                with open(file_path, "r") as file:
+                    file_content = file.read()
+                    if method_name in file_content:
+                        return file_path
     return None
 
-def modify_method(file_path, method_name, new_method_code, insert_strategy='at_start'):
-    """Modify the method in the smali file."""
-    try:
-        with open(file_path, "r") as file:
-            lines = file.readlines()
-    except IOError as e:
-        print(f"{RED}ERROR: {NC}Could not read file {file_path}: {e}")
-        return
 
+def modify_method(file_path, method_name, new_method_code):
+    """Modify the method in the smali file."""
+    with open(file_path, "r") as file:
+        lines = file.readlines()
+
+    in_method = False
     new_lines = []
     method_found = False
-    i = 0
-    while i < len(lines):
-        line = lines[i]
+
+    for line in lines:
         if f".method {method_name}" in line:
+            in_method = True
             method_found = True
-            new_lines.append(line)
-            i += 1
-
-            if insert_strategy == 'after_annotations':
-                # Skip annotations and prologue/locals
-                while i < len(lines) and not (".end annotation" in lines[i] or ".locals" in lines[i] or ".prologue" in lines[i] or (lines[i].strip() and not lines[i].startswith("."))):
-                    new_lines.append(lines[i])
-                    i += 1
-                # Add the line that ended the loop (e.g., .end annotation or .locals)
-                if i < len(lines):
-                    new_lines.append(lines[i])
-                    i += 1
-
-            # Insert new code
             new_lines.extend(new_method_code)
+            continue
 
-            # Skip original method body until .end method
-            while i < len(lines) and ".end method" not in lines[i]:
-                i += 1
-            # Add .end method
-            if i < len(lines):
-                new_lines.append(lines[i])
-                i += 1
-            continue # Continue outer loop after handling the method
+        if in_method:
+            if ".end method" in line:
+                in_method = False
+            continue
 
         new_lines.append(line)
-        i += 1
 
     if method_found:
-        try:
-            with open(file_path, "w") as file:
-                file.writelines(new_lines)
-            print(f"{GREEN}INFO: {NC}Method {method_name} modified successfully.")
-        except IOError as e:
-            print(f"{RED}ERROR: {NC}Could not write to file {file_path}: {e}")
+        with open(file_path, "w") as file:
+            file.writelines(new_lines)
+        print(f"{GREEN}INFO: {NC}Method {method_name} modified successfully.")
     else:
         raise NoMethodFoundError(
             f"{YELLOW}WARN: {NC}Method {method_name} not found in the file."
         )
 
+
+def modify_del_method(file_path, method_name, new_method_code):
+    """Modify the method in the smali file."""
+    with open(file_path, "r") as file:
+        lines = file.readlines()
+
+    in_method = False
+    in_annotation = False
+    method_found = False
+    annotation_end_index = -1
+    new_lines = []
+
+    for i, line in enumerate(lines):
+        if f".method {method_name}" in line:
+            in_method = True
+            method_found = True
+            new_lines.append(line)
+            continue
+
+        if in_method:
+            if ".annotation" in line:
+                in_annotation = True
+            elif in_annotation and ".end annotation" in line:
+                in_annotation = False
+                annotation_end_index = i
+
+            if (
+                not in_annotation
+                and annotation_end_index != -1
+                and i > annotation_end_index
+            ):
+                new_lines.extend(new_method_code)
+                annotation_end_index = -1
+
+            new_lines.append(line)
+
+            if ".end method" in line:
+                in_method = False
+        else:
+            new_lines.append(line)
+
+    if method_found:
+        with open(file_path, "w") as file:
+            file.writelines(new_lines)
+        print(f"{GREEN}INFO: {NC}Method {method_name} modified successfully.")
+    else:
+        raise NoMethodFoundError(
+            f"{YELLOW}WARN: {NC}Method {method_name} not found in the file."
+        )
+
+
 def copy_method(file_path, original_method_name, new_method_name):
     """Copy the method in the smali file."""
-    try:
-        with open(file_path, "r") as file:
-            lines = file.readlines()
-    except IOError as e:
-        print(f"{RED}ERROR: {NC}Could not read file {file_path}: {e}")
-        return
+    with open(file_path, "r") as file:
+        lines = file.readlines()
 
     in_method = False
     method_found = False
     method_lines = []
+
     for line in lines:
         if f".method {original_method_name}" in line:
             in_method = True
             method_found = True
             method_lines.append(line.replace(original_method_name, new_method_name))
             continue
+
         if in_method:
             method_lines.append(line)
             if ".end method" in line:
                 in_method = False
 
     if method_found:
-        try:
-            with open(file_path, "a") as file:
-                file.writelines(method_lines)
-            print(
-                f"{GREEN}INFO: {NC}Method {original_method_name} copied to {new_method_name} successfully."
-            )
-        except IOError as e:
-            print(f"{RED}ERROR: {NC}Could not append to file {file_path}: {e}")
+        with open(file_path, "a") as file:
+            file.writelines(method_lines)
+        print(
+            f"{GREEN}INFO: {NC}Method {original_method_name} copied to {new_method_name} successfully."
+        )
     else:
         print(f"{YELLOW}WARN: {NC}Method {original_method_name} not found in the file.")
 
+
 def apply_regex(root_directory, search_pattern, replace_pattern, file_path=None):
     """Apply a regex search and replace patch across all smali files in the root directory or a specific file."""
-    try:
-        pattern = re.compile(search_pattern)
-    except re.error as e:
-        print(f"{RED}ERROR: {NC}Invalid regex pattern '{search_pattern}': {e}")
-        return
-
-    files_to_process = []
+    pattern = re.compile(search_pattern)
 
     if file_path:
-        # If specific file is given, only process that file
-        if os.path.exists(file_path) and file_path.endswith(".smali"):
-            files_to_process = [file_path]
-        else:
-            print(f"{YELLOW}WARN: {NC}Specified file {file_path} does not exist or is not a .smali file.")
-            return
+        with open(file_path, "r") as file:
+            file_content = file.read()
+
+        new_content = pattern.sub(replace_pattern, file_content)
+
+        if new_content != file_content:
+            with open(file_path, "w") as file:
+                file.write(new_content)
+            print(f"{GREEN}INFO: {NC}Applied regex patch to {file_path}")
     else:
-        # Otherwise, walk the directory
         for dirpath, _, filenames in os.walk(root_directory):
             for filename in filenames:
                 if filename.endswith(".smali"):
-                    files_to_process.append(os.path.join(dirpath, filename))
+                    file_path = os.path.join(dirpath, filename)
+                    with open(file_path, "r") as file:
+                        file_content = file.read()
 
-    for fp in files_to_process:
-        try:
-            with open(fp, "r", encoding='utf-8', errors='ignore') as file:
-                file_content = file.read()
-            new_content = pattern.sub(replace_pattern, file_content)
-            if new_content != file_content:
-                with open(fp, "w") as file:
-                    file.write(new_content)
-                print(f"{GREEN}INFO: {NC}Applied regex patch to {fp}")
-        except IOError as e:
-            print(f"{RED}ERROR: {NC}Could not process file {fp}: {e}")
+                    new_content = pattern.sub(replace_pattern, file_content)
+
+                    if new_content != file_content:
+                        with open(file_path, "w") as file:
+                            file.write(new_content)
+                        print(f"{GREEN}INFO: {NC}Applied regex patch to {file_path}")
+
 
 def apply_isRestrictedMessage(root_directory):
     """Access Banned Channels [Related]"""
     search_pattern = r"(iget-boolean\s([v|p]\d+)\, ([v|p]\d+)\, Lorg/telegram/.*isRestrictedMessage:Z)"
     replace_pattern = r"\1\nconst \2, 0x0"
     apply_regex(root_directory, search_pattern, replace_pattern)
+
 
 def apply_enableSavingMedia(root_directory):
     """Enabling Saving Media Everywhere"""
@@ -233,6 +282,7 @@ def apply_enableSavingMedia(root_directory):
     replace_pattern = r"\1\nconst \2, 0x0"
     apply_regex(root_directory, search_pattern, replace_pattern)
 
+
 def apply_premiumLocked(root_directory):
     """make premiumLocked bool false."""
     search_pattern = (
@@ -241,72 +291,69 @@ def apply_premiumLocked(root_directory):
     replace_pattern = r"\1\nconst \2, 0x0"
     apply_regex(root_directory, search_pattern, replace_pattern)
 
+
 def apply_EnableScreenshots(root_directory):
     """Enables Screenshots"""
     initial_search_pattern = r"Landroid/view/Window;->.*Flags"
     secondary_search_pattern = r"const/16 (.*), 0x2000"
     replace_pattern = r"const/16 \1, 0x0"
+
     for dirpath, _, filenames in os.walk(root_directory):
         for filename in filenames:
             if filename.endswith(".smali"):
                 file_path = os.path.join(dirpath, filename)
-                try:
-                    with open(file_path, "r", encoding='utf-8', errors='ignore') as file:
-                        file_content = file.read()
-                except IOError as e:
-                    print(f"{RED}ERROR: {NC}Could not read file {file_path}: {e}")
-                    continue
+                with open(file_path, "r") as file:
+                    file_content = file.read()
 
                 initial_matches = re.findall(initial_search_pattern, file_content)
+
                 if initial_matches:
                     new_content = file_content
                     for match in initial_matches:
                         new_content = re.sub(
                             secondary_search_pattern, replace_pattern, new_content
                         )
+
                     if new_content != file_content:
-                        try:
-                            with open(file_path, "w") as file:
-                                file.write(new_content)
-                            print(
-                                f"{GREEN}INFO: {NC}Applied windowFlags patch to {file_path}"
-                            )
-                        except IOError as e:
-                            print(f"{RED}ERROR: {NC}Could not write to file {file_path}: {e}")
+                        with open(file_path, "w") as file:
+                            file.write(new_content)
+                        print(
+                            f"{GREEN}INFO: {NC}Applied windowFlags patch to {file_path}"
+                        )
+
 
 def apply_EnableScreenshots2(root_directory):
     """Enables Screenshots"""
     search_pattern1 = r"(sget-boolean\s([v|p]\d+).*SharedConfig;->allowScreenCapture:Z)"
     replace_pattern1 = r"\1\nconst \2, 0x1"
+
     search_pattern2 = r"(iget-boolean\s([v|p]\d+)\, ([v|p]\d+)\, Lorg/telegram/ui/.*allowScreenshots:Z)"
     replace_pattern2 = r"\1\nconst \2, 0x1"
+
     for dirpath, _, filenames in os.walk(root_directory):
         for filename in filenames:
             if filename.endswith(".smali"):
                 file_path = os.path.join(dirpath, filename)
-                try:
-                    with open(file_path, "r", encoding='utf-8', errors='ignore') as file:
-                        file_content = file.read()
-                except IOError as e:
-                    print(f"{RED}ERROR: {NC}Could not read file {file_path}: {e}")
-                    continue
+                with open(file_path, "r") as file:
+                    file_content = file.read()
 
                 new_content = re.sub(search_pattern1, replace_pattern1, file_content)
+
                 new_content = re.sub(search_pattern2, replace_pattern2, new_content)
+
                 if new_content != file_content:
-                    try:
-                        with open(file_path, "w") as file:
-                            file.write(new_content)
-                        print(
-                            f"{GREEN}INFO: {NC}Applied allowScreenCapture patch to {file_path}"
-                        )
-                    except IOError as e:
-                        print(f"{RED}ERROR: {NC}Could not write to file {file_path}: {e}")
+                    with open(file_path, "w") as file:
+                        file.write(new_content)
+                    print(
+                        f"{GREEN}INFO: {NC}Applied allowScreenCapture patch to {file_path}"
+                    )
+
 
 def apply_EnableScreenshots3(root_directory):
     """Enables Screenshots"""
     search_pattern = r"or-int/lit16\s+([vp]\d+),\s+([vp]\d+),\s+0x2000"
     replace_pattern = r"or-int/lit16 \1, \1, 0x0"
+
     secret_media_viewer_path = find_smali_file(
         root_directory, "SecretMediaViewer.smali"
     )
@@ -314,9 +361,11 @@ def apply_EnableScreenshots3(root_directory):
         apply_regex(
             root_directory, search_pattern, replace_pattern, secret_media_viewer_path
         )
+
     photo_viewer_path = find_smali_file(root_directory, "PhotoViewer.smali")
     if photo_viewer_path:
         apply_regex(root_directory, search_pattern, replace_pattern, photo_viewer_path)
+
 
 def modify_isPremium(file_path):
     """Modify isPremium method to return true."""
@@ -328,99 +377,84 @@ def modify_isPremium(file_path):
         ".end method\n",
     ]
     try:
-        modify_method(file_path, "public isPremium()Z", new_method_code, 'at_start')
+        modify_method(file_path, "public isPremium()Z", new_method_code)
     except NoMethodFoundError as e:
         print(e)
 
+
 def modify_markMessagesAsDeleted(file_path):
     """Modify markMessagesAsDeleted methods"""
-    try:
-        # Determine the smali directory structure
-        parts = os.path.dirname(file_path).split(os.sep)
-        if len(parts) >= 2:
-            smali_dir_parts = parts[:2]
-        else:
-            smali_dir_parts = parts[:1] if parts else ['.']
-
-        root_dir = parts[0] if parts else '.'
-
-        # Check for archive-info.json to determine if it's a multi-dex structure
-        if "archive-info.json" in os.listdir(root_dir):
-            smali_dir_parts.append("classes")
-
-        smali_dir = os.path.join(*smali_dir_parts) if smali_dir_parts else "."
-        new_dir = os.path.join(smali_dir, "org", "telegram", "abhi")
+    smali_dir = os.path.dirname(file_path).split("/")[0:2]
+    root_dir = os.path.dirname(file_path).split("/")[0]
+    if "archive-info.json" in os.listdir(root_dir):
+        smali_dir.append("classes")
+    smali_dir = "/".join(smali_dir)
+    new_dir = os.path.join(smali_dir, "org", "telegram", "abhi")
+    if not os.path.exists(new_dir):
         os.makedirs(new_dir, exist_ok=True)
+    hook_file = os.path.join(new_dir, "Hook.smali")
+    with open(hook_file, "w") as file:
+        file.write(HOOK_SMALI)
 
-        hook_file = os.path.join(new_dir, "Hook.smali")
-        with open(hook_file, "w") as file:
-            file.write(HOOK_SMALI)
+    search_pattern = r"sget\s([v|p]\d),\sLorg/telegram/messenger/R\$string;->ShowAds:I\n+\s+(invoke-static\s{\1},\sLorg/telegram/messenger/LocaleController;->getString\(I\)Ljava/lang/String;\n+\s+move-result-object\s\1|goto\s:goto_\d+)((\n.*)*?)invoke-virtual\s({.*}),\sLorg/telegram/ui/Cells/TextCell;->setTextAndCheck\(Ljava/lang/CharSequence;ZZ\)V"
 
-        # Apply regex patches
-        search_pattern = r"sget\s([v|p]\d),\sLorg/telegram/messenger/R\$string;->ShowAds:I\s+(invoke-static\s{\1},\sLorg/telegram/messenger/LocaleController;->getString\(I\)Ljava/lang/String;\s+move-result-object\s\1|goto\s:goto_\d+)((.*)*?)invoke-virtual\s({.*}),\sLorg/telegram/ui/Cells/TextCell;->setTextAndCheck\(Ljava/lang/CharSequence;ZZ\)V"
-        search_pattern2 = r"sget\s([v|p]\d),\sLorg/telegram/messenger/R\$string;->ShowAdsInfo:I\s+(invoke-static\s{\1},\sLorg/telegram/messenger/LocaleController;->getString\(I\)Ljava/lang/String;\s+move-result-object\s\1|goto\s:goto_\d+)"
-        search_pattern3 = r"sget\s([v|p]\d),\sLorg/telegram/messenger/R\$string;->ShowAdsTitle:I\s+(invoke-static\s{\1},\sLorg/telegram/messenger/LocaleController;->getString\(I\)Ljava/lang/String;\s+move-result-object\s\1|goto\s:goto_\d+)"
+    search_pattern2 = r"sget\s([v|p]\d),\sLorg/telegram/messenger/R\$string;->ShowAdsInfo:I\n+\s+(invoke-static\s{\1},\sLorg/telegram/messenger/LocaleController;->getString\(I\)Ljava/lang/String;\n+\s+move-result-object\s\1|goto\s:goto_\d+)"
 
-        replace_pattern = r'const-string \1, "Do Not Delete Messages"\n\3\4\n    invoke-virtual \5, Lorg/telegram/ui/Cells/TextCell;->setTextAndCheck2(Ljava/lang/CharSequence;ZZ)V'
-        replace_pattern2 = r'const-string \1, "After enabling or disabling the feature, ensure you revisit this page for the changes to take effect.\nMod by Abhi"'
-        replace_pattern3 = r'const-string \1, "Anti-Delete Messages"\n    invoke-virtual {v1, \1}, Lorg/telegram/ui/Cells/HeaderCell;->setText(Ljava/lang/CharSequence;)V\n    return-void'
+    search_pattern3 = r"sget\s([v|p]\d),\sLorg/telegram/messenger/R\$string;->ShowAdsTitle:I\n+\s+(invoke-static\s{\1},\sLorg/telegram/messenger/LocaleController;->getString\(I\)Ljava/lang/String;\n+\s+move-result-object\s\1|goto\s:goto_\d+)"
 
-        search_patterns = [search_pattern, search_pattern2, search_pattern3]
-        replace_patterns = [replace_pattern, replace_pattern2, replace_pattern3]
+    replace_pattern = r'const-string \1, "Do Not Delete Messages"\n\3\4\n    invoke-virtual \5, Lorg/telegram/ui/Cells/TextCell;->setTextAndCheck2(Ljava/lang/CharSequence;ZZ)V'
+    replace_pattern2 = r'const-string \1, "After enabling or disabling the feature, ensure you revisit this page for the changes to take effect.\\nMod by Abhi"'
+    replace_pattern3 = r'const-string \1, "Anti-Delete Messages"\n    invoke-virtual {v1, \1}, Lorg/telegram/ui/Cells/HeaderCell;->setText(Ljava/lang/CharSequence;)V\n    return-void'
 
-        for i, s_p in enumerate(search_patterns):
-            apply_regex(root_dir, s_p, replace_patterns[i])
+    search_patterns = [search_pattern, search_pattern2, search_pattern3]
+    replace_patterns = [replace_pattern, replace_pattern2, replace_pattern3]
 
-        # Automate modifications
-        automate_modification(root_dir, "TextCell.smali", create_delcopy_method)
-        automate_modification(root_dir, "LaunchActivity.smali", modify_del_oncreate_method)
+    for i, s_p in enumerate(search_patterns):
+        apply_regex(root_dir, s_p, replace_patterns[i])
 
-        # Modify specific methods
-        new_code_to_append = [
-            "    sget-boolean v0, Lorg/telegram/abhi/Hook;->candelMessages:Z\n",
-            "    if-eqz v0, :cond_7\n",
-            "    const/4 p1, 0x0\n",
-            "    return-object p1\n",
-            "    :cond_7\n",
-        ]
-        new_code_to_append2 = [
-            "    sget-boolean v0, Lorg/telegram/abhi/Hook;->candelMessages:Z\n",
-            "    if-eqz v0, :cond_7\n",
-            "    const/4 v1, 0x0\n",
-            "    return-object v1\n",
-            "    :cond_7\n",
-        ]
+    automate_modification(root_dir, "TextCell.smali", create_delcopy_method)
 
-        try:
-            modify_method(
-                file_path,
-                "public markMessagesAsDeleted(JIZZ)Ljava/util/ArrayList;",
-                new_code_to_append,
-                'after_annotations'
-            )
-        except NoMethodFoundError as e:
-            print(e)
-        try:
-            modify_method(
-                file_path,
-                "public markMessagesAsDeleted(JLjava/util/ArrayList;ZZII)Ljava/util/ArrayList;",
-                new_code_to_append2,
-                'after_annotations'
-            )
-        except NoMethodFoundError as e:
-            print(e)
-    except Exception as e:
-        print(f"{RED}ERROR: {NC}An error occurred in modify_markMessagesAsDeleted: {e}")
+    automate_modification(root_dir, "LaunchActivity.smali", modify_del_oncreate_method)
+
+    new_code_to_append = [
+        "    sget-boolean v0, Lorg/telegram/abhi/Hook;->candelMessages:Z\n",
+        "    if-eqz v0, :cond_7\n",
+        "    const/4 p1, 0x0\n",
+        "    return-object p1\n",
+        "    :cond_7\n",
+    ]
+    new_code_to_append2 = [
+        "    sget-boolean v0, Lorg/telegram/abhi/Hook;->candelMessages:Z\n",
+        "    if-eqz v0, :cond_7\n",
+        "    const/4 v1, 0x0\n",
+        "    return-object v1\n",
+        "    :cond_7\n",
+    ]
+
+    try:
+        modify_del_method(
+            file_path,
+            "public markMessagesAsDeleted(JIZZ)Ljava/util/ArrayList;",
+            new_code_to_append,
+        )
+    except NoMethodFoundError as e:
+        print(e)
+
+    try:
+        modify_del_method(
+            file_path,
+            "public markMessagesAsDeleted(JLjava/util/ArrayList;ZZII)Ljava/util/ArrayList;",
+            new_code_to_append2,
+        )
+    except NoMethodFoundError as e:
+        print(e)
+
 
 def modify_del_oncreate_method(file_path):
     method_name = "protected onCreate(Landroid/os/Bundle;)V"
     method_name2 = "public onCreate(Landroid/os/Bundle;)V"  # For plus
-    try:
-        with open(file_path, "r") as file:
-            lines = file.readlines()
-    except IOError as e:
-        print(f"{RED}ERROR: {NC}Could not read file {file_path}: {e}")
-        return
+    with open(file_path, "r") as file:
+        lines = file.readlines()
 
     new_lines = []
     in_method = False
@@ -438,35 +472,40 @@ def modify_del_oncreate_method(file_path):
         "    move-result v0\n",
         "    sput-boolean v0, Lorg/telegram/abhi/Hook;->candelMessages:Z\n",
     ]
+
     for line in lines:
-        if f".method {method_name}" in line or f".method {method_name2}" in line:
+        if f".method {method_name}" or f".method {method_name2}" in line:
             in_method = True
             method_found = True
             new_lines.append(line)
             continue
+
         if in_method:
             if cond_label_pattern.search(line):
                 new_lines.append(line)
                 continue
+
             if ".locals" in line:
                 new_lines.append(line)
                 new_lines.extend(new_codes)
             else:
                 new_lines.append(line)
+
             if ".end method" in line:
                 in_method = False
+
             continue
+
         new_lines.append(line)
+
     if method_found:
-        try:
-            with open(file_path, "w") as file:
-                file.writelines(new_lines)
-            print(f"{GREEN}INFO: {NC}Method {method_name} modified successfully.")
-        except IOError as e:
-            print(f"{RED}ERROR: {NC}Could not write to file {file_path}: {e}")
+        with open(file_path, "w") as file:
+            file.writelines(new_lines)
+        print(f"{GREEN}INFO: {NC}Method {method_name} modified successfully.")
     else:
         print(f"{YELLOW}WARN: {NC}Method {method_name} not found in the file.")
-        # sys.exit(1) # Not exiting on error to allow other patches to run
+        sys.exit(1)
+
 
 def create_delcopy_method(file_path):
     method_name = "public setTextAndCheck2(Ljava/lang/CharSequence;ZZ)V"
@@ -475,12 +514,8 @@ def create_delcopy_method(file_path):
         "public setTextAndCheck(Ljava/lang/CharSequence;ZZ)V",
         method_name,
     )
-    try:
-        with open(file_path, "r") as file:
-            lines = file.readlines()
-    except IOError as e:
-        print(f"{RED}ERROR: {NC}Could not read file {file_path}: {e}")
-        return
+    with open(file_path, "r") as file:
+        lines = file.readlines()
 
     new_lines = []
     in_method = False
@@ -504,34 +539,39 @@ def create_delcopy_method(file_path):
         "    :goto_58\n",
         "    return-void\n",
     ]
+
     for line in lines:
         if f".method {method_name}" in line:
             in_method = True
             method_found = True
             new_lines.append(line)
             continue
+
         if in_method:
             if cond_label_pattern.search(line):
                 new_lines.append(line)
                 continue
+
             if "return-void" in line:
                 new_lines.extend(new_codes)
             else:
                 new_lines.append(line)
+
             if ".end method" in line:
                 in_method = False
+
             continue
+
         new_lines.append(line)
+
     if method_found:
-        try:
-            with open(file_path, "w") as file:
-                file.writelines(new_lines)
-            print(f"{GREEN}INFO: {NC}Method {method_name} modified successfully.")
-        except IOError as e:
-            print(f"{RED}ERROR: {NC}Could not write to file {file_path}: {e}")
+        with open(file_path, "w") as file:
+            file.writelines(new_lines)
+        print(f"{GREEN}INFO: {NC}Method {method_name} modified successfully.")
     else:
         print(f"{YELLOW}WARN: {NC}Method {method_name} not found in the file.")
-        # sys.exit(1) # Not exiting on error to allow other patches to run
+        sys.exit(1)
+
 
 def modify_isPremium_stories(file_path):
     """Modify isPremium method in StoriesController.
@@ -546,7 +586,7 @@ def modify_isPremium_stories(file_path):
         ".end method\n",
     ]
     try:
-        modify_method(file_path, "private isPremium(J)Z", new_method_code, 'at_start')
+        modify_method(file_path, "private isPremium(J)Z", new_method_code)
     except NoMethodFoundError:
         # Maybe plus messenger ? let's look for 2nd method
         new_method_code = [
@@ -557,9 +597,10 @@ def modify_isPremium_stories(file_path):
             ".end method\n",
         ]
         try:
-            modify_method(file_path, "public final isPremium(J)Z", new_method_code, 'at_start')
+            modify_method(file_path, "public final isPremium(J)Z", new_method_code)
         except NoMethodFoundError:
             print(f"{YELLOW}No isPremium(J)Z method found in StoriesController!{NC}")
+
 
 def modify_getCertificateSHA256Fingerprint(file_path):
     """Modify getCertificateSHA256Fingerprint method.
@@ -580,10 +621,10 @@ def modify_getCertificateSHA256Fingerprint(file_path):
             file_path,
             "public static getCertificateSHA256Fingerprint()Ljava/lang/String;",
             new_method_code,
-            'at_start'
         )
     except NoMethodFoundError as e:
         print(e)
+
 
 def modify_forcePremium(file_path):
     """Modify forcePremium method to true.
@@ -601,10 +642,10 @@ def modify_forcePremium(file_path):
             file_path,
             "static synthetic access$3000(Lorg/telegram/ui/PremiumPreviewFragment;)Z",
             new_method_code,
-            'at_start'
         )
     except NoMethodFoundError as e:
         print(e)
+
 
 def modify_markStories_method(file_path):
     """Modify markStoryAsRead methods
@@ -629,7 +670,6 @@ def modify_markStories_method(file_path):
             file_path,
             "public markStoryAsRead(Lorg/telegram/tgnet/tl/TL_stories$PeerStories;Lorg/telegram/tgnet/tl/TL_stories$StoryItem;Z)Z",
             new_method_code1,
-            'at_start'
         )
     except NoMethodFoundError as e:
         print(e)
@@ -638,62 +678,59 @@ def modify_markStories_method(file_path):
             file_path,
             "public markStoryAsRead(JLorg/telegram/tgnet/tl/TL_stories$StoryItem;)Z",
             new_method_code2,
-            'at_start'
         )
     except NoMethodFoundError as e:
         print(e)
 
+
 def modify_isPremiumFeatureAvailable_method(file_path, method_name):
     """Modify isPremiumFeatureAvailable method to change 'const/4 v1, 0x0' to 'const/4 v1, 0x1'."""
-    try:
-        with open(file_path, "r") as file:
-            lines = file.readlines()
-    except IOError as e:
-        print(f"{RED}ERROR: {NC}Could not read file {file_path}: {e}")
-        return
+    with open(file_path, "r") as file:
+        lines = file.readlines()
 
     new_lines = []
     in_method = False
     method_found = False
     cond_label_pattern = re.compile(r":cond_\d")
+
     for line in lines:
         if f".method {method_name}" in line:
             in_method = True
             method_found = True
             new_lines.append(line)
             continue
+
         if in_method:
             if cond_label_pattern.search(line):
                 new_lines.append(line)
                 continue
+
             if "const/4 v1, 0x0" in line:
                 new_lines.append("    const/4 v1, 0x1\n")
             else:
                 new_lines.append(line)
+
             if ".end method" in line:
                 in_method = False
+
             continue
+
         new_lines.append(line)
+
     if method_found:
-        try:
-            with open(file_path, "w") as file:
-                file.writelines(new_lines)
-            print(f"{GREEN}INFO: {NC}Method {method_name} modified successfully.")
-        except IOError as e:
-            print(f"{RED}ERROR: {NC}Could not write to file {file_path}: {e}")
+        with open(file_path, "w") as file:
+            file.writelines(new_lines)
+        print(f"{GREEN}INFO: {NC}Method {method_name} modified successfully.")
     else:
         print(f"{YELLOW}WARN: {NC}Method {method_name} not found in the file.")
+
 
 def modify_secret_media_methods(file_path):
     """Modify given methods in MessageObject.smali for Secret Media Enabler.
     - This allows users to view secret media without worrying about their destruction or timeout.
     """
-    try:
-        with open(file_path, "r") as file:
-            lines = file.readlines()
-    except IOError as e:
-        print(f"{RED}ERROR: {NC}Could not read file {file_path}: {e}")
-        return
+    with open(file_path, "r") as file:
+        lines = file.readlines()
 
     new_lines = []
     in_method = False
@@ -732,6 +769,7 @@ def modify_secret_media_methods(file_path):
             ".end method\n",
         ],
     }
+
     for line in lines:
         if any(method_name in line for method_name in method_found.keys()):
             in_method = True
@@ -747,6 +785,7 @@ def modify_secret_media_methods(file_path):
             else:
                 new_lines.extend(method_codes[method_name])
                 continue
+
         if in_method:
             if method_name == "public getSecretTimeLeft()I":
                 if "const/4 v1, 0x0" in line:
@@ -756,62 +795,123 @@ def modify_secret_media_methods(file_path):
                     )
                 else:
                     new_lines.append(line)
+
             if ".end method" in line:
                 in_method = False
             continue
+
         new_lines.append(line)
+
     if all(method_found.values()):
-        try:
-            with open(file_path, "w") as file:
-                file.writelines(new_lines)
-            print(f"{GREEN}INFO: {NC}Secret Media methods modified successfully.")
-        except IOError as e:
-            print(f"{RED}ERROR: {NC}Could not write to file {file_path}: {e}")
+        with open(file_path, "w") as file:
+            file.writelines(new_lines)
+        print(f"{GREEN}INFO: {NC}Secret Media methods modified successfully.")
     else:
         print(f"{YELLOW}WARN: {NC}Some Secret Media methods not found in the file.")
 
+
 def modify_updateParams_method(file_path, method_name):
     """Modify updateParams method for faster downloads"""
-    try:
-        with open(file_path, "r") as file:
-            lines = file.readlines()
-    except IOError as e:
-        print(f"{RED}ERROR: {NC}Could not read file {file_path}: {e}")
-        return
+    with open(file_path, "r") as file:
+        lines = file.readlines()
 
     new_lines = []
     in_method = False
     method_found = False
     cond_label_pattern = re.compile(r":cond_\d")
+
     for line in lines:
         if f".method {method_name}" in line:
             in_method = True
             method_found = True
             new_lines.append(line)
             continue
+
         if in_method:
             if cond_label_pattern.search(line):
                 new_lines.append(line)
                 continue
+
             if "const/high16 v0, 0x20000" in line:
                 new_lines.append("    const/high16 v0, 0x80000\n")
             elif "const/4 v0, 0x4" in line:
                 new_lines.append("    const/16 v0, 0x8\n")
             else:
                 new_lines.append(line)
+
             if ".end method" in line:
                 in_method = False
+
             continue
+
         new_lines.append(line)
+
     if method_found:
-        try:
-            with open(file_path, "w") as file:
-                file.writelines(new_lines)
-            print(f"{GREEN}INFO: {NC}Method {method_name} modified successfully.")
-        except IOError as e:
-            print(f"{RED}ERROR: {NC}Could not write to file {file_path}: {e}")
+        with open(file_path, "w") as file:
+            file.writelines(new_lines)
+        print(f"{GREEN}INFO: {NC}Method {method_name} modified successfully.")
     else:
         print(f"{YELLOW}WARN: {NC}Method {method_name} not found in the file.")
+
+
+# ONly apply below one in Plus Messenger, Telegram will crash if you do so
+# def modify_markAsReadStories(file_path):
+#     """Modify the smali file to change the iget-boolean and if-nez lines."""
+#     with open(file_path, "r") as file:
+#         lines = file.readlines()
+
+#     new_lines = []
+#     in_method = False
+#     method_found = False
+#     cond_label_pattern = re.compile(r":cond_\d")
+#     register_pattern = re.compile(r"v\d+")
+
+#     for line in lines:
+#         if (
+#             "iget-boolean" in line
+#             and "Lorg/telegram/tgnet/TLRPC$User;->premium:Z" in line
+#         ):
+#             method_found = True
+#             new_lines.append(line)
+#             new_lines.append("    const/4 v9, 0x1\n")
+#         elif "if-nez" in line and cond_label_pattern.search(line):
+#             new_lines.append(line)
+#         else:
+#             new_lines.append(line)
+
+
+#         # if method_found:
+#         #     with open(file_path, "w") as file:
+#         #         file.writelines(new_lines)
+#         #     new_method_code = [
+#         #         ".method private updateButton(Z)V\n",
+#         #         ".locals 5\n",
+#         #         "const/4 v0, 0x0\n",
+#         #         "const/4 v2, 0x1\n",
+#         #         "iput-boolean v2, p0, Lorg/telegram/ui/Stories/StealthModeAlert;->stealthModeIsActive:Z\n",
+#         #         "iget-object v0, p0, Lorg/telegram/ui/Stories/StealthModeAlert;->button:Lorg/telegram/ui/Components/Premium/PremiumButtonView;\n",
+#         #         "sget v1, Lorg/telegram/messenger/R$string;->StealthModeIsActive:I\n",
+#         #         "invoke-static {v1}, Lorg/telegram/messenger/LocaleController;->getString(I)Ljava/lang/String;\n",
+#         #         "move-result-object v1\n",
+#         #         "invoke-virtual {v0, v1, v2, p1}, Lorg/telegram/ui/Components/Premium/PremiumButtonView;->setOverlayText(Ljava/lang/String;ZZ)V\n",
+#         #         "iget-object p1, p0, Lorg/telegram/ui/Stories/StealthModeAlert;->button:Lorg/telegram/ui/Components/Premium/PremiumButtonView;\n",
+#         #         "iget-object p1, p1, Lorg/telegram/ui/Components/Premium/PremiumButtonView;->overlayTextView:Lorg/telegram/ui/Components/AnimatedTextView;\n",
+#         #         "sget v0, Lorg/telegram/ui/ActionBar/Theme;->key_featuredStickers_buttonText:I\n",
+#         #         "invoke-static {v0}, Lorg/telegram/ui/ActionBar/Theme;->getColor(I)I\n",
+#         #         "move-result v0\n",
+#         #         "invoke-virtual {p1, v0}, Lorg/telegram/ui/Components/AnimatedTextView;->setTextColor(I)V\n",
+#         #         "return-void\n",
+#         #         ".end method\n",
+#         #     ]
+#         # modify_method(file_path, "private updateButton(Z)V", new_method_code)
+#         print(
+#             f"{GREEN}INFO: {NC}MarkAsRead patch applied successfully."
+#         )
+#     else:
+#         print(
+#             f"{YELLOW}WARN: {NC}MarkAsRead patch not found in the file."
+#         )
+
 
 def modify_isChatNoForwards(file_path):
     """Saving Media From Forward Restricted Group/Channels"""
@@ -830,7 +930,7 @@ def modify_isChatNoForwards(file_path):
         ".end method\n",
     ]
     try:
-        modify_method(file_path, "public isChatNoForwards(J)Z", new_method_code1, 'at_start')
+        modify_method(file_path, "public isChatNoForwards(J)Z", new_method_code1)
     except NoMethodFoundError as e:
         print(e)
     try:
@@ -838,10 +938,10 @@ def modify_isChatNoForwards(file_path):
             file_path,
             "public isChatNoForwards(Lorg/telegram/tgnet/TLRPC$Chat;)Z",
             new_method_code2,
-            'at_start'
         )
     except NoMethodFoundError as e:
         print(e)
+
 
 def modify_checkCanOpenChat(file_path):
     """Access Banned Channels [Main]"""
@@ -871,7 +971,6 @@ def modify_checkCanOpenChat(file_path):
             file_path,
             "public checkCanOpenChat(Landroid/os/Bundle;Lorg/telegram/ui/ActionBar/BaseFragment;)Z",
             new_method_code1,
-            'at_start'
         )
     except NoMethodFoundError as e:
         print(e)
@@ -880,7 +979,6 @@ def modify_checkCanOpenChat(file_path):
             file_path,
             "public checkCanOpenChat(Landroid/os/Bundle;Lorg/telegram/ui/ActionBar/BaseFragment;Lorg/telegram/messenger/MessageObject;)Z",
             new_method_code2,
-            'at_start'
         )
     except NoMethodFoundError as e:
         print(e)
@@ -889,10 +987,10 @@ def modify_checkCanOpenChat(file_path):
             file_path,
             "public checkCanOpenChat(Landroid/os/Bundle;Lorg/telegram/ui/ActionBar/BaseFragment;Lorg/telegram/messenger/MessageObject;Lorg/telegram/messenger/browser/Browser$Progress;)Z",
             new_method_code3,
-            'at_start'
         )
     except NoMethodFoundError as e:
         print(e)
+
 
 def modify_is_sponsored_method(file_path):
     """Disable isSponsored Check"""
@@ -904,9 +1002,10 @@ def modify_is_sponsored_method(file_path):
         ".end method\n",
     ]
     try:
-        modify_method(file_path, "public isSponsored()Z", new_method_code, 'at_start')
+        modify_method(file_path, "public isSponsored()Z", new_method_code)
     except NoMethodFoundError as e:
         print(e)
+
 
 def modify_is_sponsored_dis_method(file_path):
     """Force isSponsoredDisabled True"""
@@ -918,9 +1017,10 @@ def modify_is_sponsored_dis_method(file_path):
         ".end method\n",
     ]
     try:
-        modify_method(file_path, "public isSponsoredDisabled()Z", new_method_code, 'at_start')
+        modify_method(file_path, "public isSponsoredDisabled()Z", new_method_code)
     except NoMethodFoundError as e:
         print(e)
+
 
 def modify_is_proxy_sponsored_method(file_path):
     """Remove Proxy Sponsored Channels"""
@@ -931,22 +1031,26 @@ def modify_is_proxy_sponsored_method(file_path):
         ".end method\n",
     ]
     try:
-        modify_method(file_path, "private checkPromoInfoInternal(Z)V", new_method_code, 'at_start')
+        modify_method(file_path, "private checkPromoInfoInternal(Z)V", new_method_code)
     except NoMethodFoundError as e:
         print(e)
+
 
 def automate_modification(root_directory, target_file, modification_function):
     """Automate the process of finding the 'relevant smali file' and applying the modification."""
     smali_file_path = find_smali_file(root_directory, target_file)
+
     if smali_file_path:
         print(f"{GREEN}INFO: {NC}Found {target_file} at: {smali_file_path}")
         modification_function(smali_file_path)
     else:
         print(f"{YELLOW}WARN: {NC}{target_file} not found in {root_directory}.")
 
+
 def automate_method_modification(root_directory, method_name, modification_function):
     """Automate the process of finding the 'method in smali files' and applying the modification."""
     smali_file_path = find_smali_file_by_method(root_directory, method_name)
+
     if smali_file_path:
         print(f"{GREEN}INFO: {NC}Found the method in file: {smali_file_path}")
         modification_function(smali_file_path, method_name)
@@ -955,208 +1059,150 @@ def automate_method_modification(root_directory, method_name, modification_funct
             f"{YELLOW}WARN: {NC}Method {method_name} not found in any file under {root_directory}."
         )
 
-# --- Patch Functions ---
-def apply_all_except_anti_delete(root_directory):
-    apply_patches(root_directory, patches, exclude=["0", "00", "17"])
 
-def apply_all_including_anti_delete(root_directory):
-    apply_patches(root_directory, patches, exclude=["0", "00"])
-
-def patch_disable_signature(root_directory):
-    automate_modification(
-        root_directory,
-        "AndroidUtilities.smali",
-        modify_getCertificateSHA256Fingerprint,
-    )
-
-def patch_is_premium(root_directory):
-    automate_modification(
-        root_directory, "UserConfig.smali", modify_isPremium
-    )
-
-def patch_is_premium_stories(root_directory):
-    automate_modification(
-        root_directory, "StoriesController.smali", modify_isPremium_stories
-    )
-
-def patch_force_premium(root_directory):
-    automate_modification(
-        root_directory, "PremiumPreviewFragment.smali", modify_forcePremium
-    )
-
-def patch_mark_story_as_read(root_directory):
-    automate_modification(
-        root_directory, "StoriesController.smali", modify_markStories_method
-    )
-
-def patch_is_premium_feature_available(root_directory):
-    automate_method_modification(
-        root_directory,
-        "private isPremiumFeatureAvailable(I)Z",
-        modify_isPremiumFeatureAvailable_method,
-    )
-    automate_method_modification(
-        root_directory,
-        "public final isPremiumFeatureAvailable(I)Z",
-        modify_isPremiumFeatureAvailable_method,
-    )
-
-def patch_update_params(root_directory):
-    automate_method_modification(
-        root_directory, "private updateParams()V", modify_updateParams_method
-    )
-
-def patch_is_chat_no_forwards(root_directory):
-    automate_modification(
-        root_directory,
-        "MessagesController.smali",
-        modify_isChatNoForwards,
-    )
-
-def patch_check_can_open_chat(root_directory):
-    automate_modification(
-        root_directory,
-        "MessagesController.smali",
-        modify_checkCanOpenChat,
-    )
-
-def patch_is_restricted_message(root_directory):
-    apply_isRestrictedMessage(root_directory)
-
-def patch_enable_saving_media(root_directory):
-    apply_enableSavingMedia(root_directory)
-
-def patch_premium_locked(root_directory):
-    apply_premiumLocked(root_directory)
-
-def patch_enable_screenshots(root_directory):
-    apply_EnableScreenshots(root_directory)
-    apply_EnableScreenshots2(root_directory)
-    apply_EnableScreenshots3(root_directory)
-
-def patch_is_sponsored(root_directory):
-    automate_modification(
-        root_directory, "MessageObject.smali", modify_is_sponsored_method
-    )
-
-def patch_remove_proxy_sponsored(root_directory):
-    automate_modification(
-        root_directory,
-        "MessagesController.smali",
-        modify_is_proxy_sponsored_method,
-    )
-
-def patch_secret_media_methods(root_directory):
-    automate_modification(
-        root_directory, "MessageObject.smali", modify_secret_media_methods
-    )
-
-def patch_anti_messages_delete(root_directory):
-    automate_modification(
-        root_directory, "MessagesStorage.smali", modify_markMessagesAsDeleted
-    )
-
-def patch_is_sponsored_disabled(root_directory):
-    automate_modification(
-        root_directory, "MessagesController.smali", modify_is_sponsored_dis_method
-    )
-
-def apply_patches(root_directory, patches_dict, exclude=None):
+def apply_patches(patches, exclude=None):
     """Apply all patches except the ones specified in the exclude list."""
-    for key, (description, func) in patches_dict.items():
+    for key, value in patches.items():
         if key not in exclude:
-            print(f"{YELLOW}START: {NC}Applying patch {key}: {BLUE}{description}{NC}")
-            func(root_directory)
+            value[1]()
+
 
 def main(selected_patch=None, root_directory=None):
     """Main function to handle user input and apply patches."""
+
     if root_directory == "Telegram":
         root_directory = (
             input("Give me the decompiled directory path (Default is 'Telegram'): ")
             or root_directory
         )
 
-    # --- Define Patches ---
     patches = {
         "0": (
             f"{BLUE}Apply all patches [Except Anti Messages Delete Patch]{NC}",
-            lambda dir: apply_patches(dir, patches, exclude=["0", "00", "17"]),
+            lambda: apply_patches(patches, exclude=["0", "00", "17"]),
         ),
         "00": (
             f"{BLUE}Apply all patches [Including Anti Messages Delete Patch]{NC}",
-            lambda dir: apply_patches(dir, patches, exclude=["0", "00"]),
+            lambda: apply_patches(patches, exclude=["0", "00"]),
         ),
         "1": (
             f"Disable Signature Verification {YELLOW}(Must for Telegram){NC}",
-            patch_disable_signature,
+            lambda: automate_modification(
+                root_directory,
+                "AndroidUtilities.smali",
+                modify_getCertificateSHA256Fingerprint,
+            ),
         ),
         "2": (
             "Modify isPremium method to true",
-            patch_is_premium,
+            lambda: automate_modification(
+                root_directory, "UserConfig.smali", modify_isPremium
+            ),
         ),
         "3": (
             "Modify isPremium method for Stories to true",
-            patch_is_premium_stories,
+            lambda: automate_modification(
+                root_directory, "StoriesController.smali", modify_isPremium_stories
+            ),
         ),
         "4": (
             "Modify forcePremium method to true",
-            patch_force_premium,
+            lambda: automate_modification(
+                root_directory, "PremiumPreviewFragment.smali", modify_forcePremium
+            ),
         ),
         "5": (
             "Modify markStoryAsRead methods to disable marking stories as read",
-            patch_mark_story_as_read,
+            lambda: automate_modification(
+                root_directory, "StoriesController.smali", modify_markStories_method
+            ),
         ),
         "6": (
             "Modify isPremiumFeatureAvailable method to true",
-            patch_is_premium_feature_available,
+            lambda: automate_method_modification(
+                root_directory,
+                "private isPremiumFeatureAvailable(I)Z",
+                modify_isPremiumFeatureAvailable_method,
+            )
+            or automate_method_modification(
+                root_directory,
+                "public final isPremiumFeatureAvailable(I)Z",
+                modify_isPremiumFeatureAvailable_method,
+            ),
         ),
         "7": (
             "Modify updateParams method for speed boost",
-            patch_update_params,
+            lambda: automate_method_modification(
+                root_directory, "private updateParams()V", modify_updateParams_method
+            ),
         ),
         "8": (
             "Modify isChatNoForwards methods in MessagesController.smali",
-            patch_is_chat_no_forwards,
+            lambda: automate_modification(
+                root_directory,
+                "MessagesController.smali",
+                modify_isChatNoForwards,
+            ),
         ),
         "9": (
             "Access Banned Channels Patch: Modify checkCanOpenChat methods",
-            patch_check_can_open_chat,
+            lambda: automate_modification(
+                root_directory,
+                "MessagesController.smali",
+                modify_checkCanOpenChat,
+            ),
         ),
         "10": (
             "Access Banned Channels: Apply isRestrictedMessage patch",
-            patch_is_restricted_message,
+            lambda: apply_isRestrictedMessage(root_directory),
         ),
         "11": (
             "Apply enableSavingMedia patch",
-            patch_enable_saving_media,
+            lambda: apply_enableSavingMedia(root_directory),
         ),
         "12": (
             "Apply premiumLocked patch",
-            patch_premium_locked,
+            lambda: apply_premiumLocked(root_directory),
         ),
         "13": (
             "Enable Screenshots",
-            patch_enable_screenshots,
+            lambda: (
+                apply_EnableScreenshots(root_directory),
+                apply_EnableScreenshots2(root_directory),
+                apply_EnableScreenshots3(root_directory),
+            ),
         ),
         "14": (
             "Modify isSponsored method to always return false",
-            patch_is_sponsored,
+            lambda: automate_modification(
+                root_directory, "MessageObject.smali", modify_is_sponsored_method
+            ),
         ),
         "15": (
             "Remove Proxy Sponsored Channels",
-            patch_remove_proxy_sponsored,
+            lambda: automate_modification(
+                root_directory,
+                "MessagesController.smali",
+                modify_is_proxy_sponsored_method,
+            ),
         ),
         "16": (
             "Modify Secret Media methods (for Secret Media Enabler)",
-            patch_secret_media_methods,
+            lambda: automate_modification(
+                root_directory, "MessageObject.smali", modify_secret_media_methods
+            ),
         ),
         "17": (
             "Apply Anti Messages Delete Patch",
-            patch_anti_messages_delete,
+            lambda: automate_modification(
+                root_directory, "MessagesStorage.smali", modify_markMessagesAsDeleted
+            ),
         ),
         "18": (
             "Modify isSponsoredDisabled to always return true",
-            patch_is_sponsored_disabled,
+            lambda: automate_modification(
+                root_directory, "MessagesController.smali", modify_is_sponsored_dis_method
+            ),
         ),
     }
 
@@ -1164,11 +1210,9 @@ def main(selected_patch=None, root_directory=None):
         print("Select patches to apply (comma-separated):")
         for key, (description, _) in patches.items():
             print(f"{key}: {description}")
-        selected_patches_input = input("Enter patch numbers: ")
-        if selected_patches_input:
-            selected_patches = [patch.strip() for patch in selected_patches_input.split(",")]
-        else:
-            selected_patches = []
+
+        selected_patches = input("Enter patch numbers: ").split(",")
+        selected_patches = [patch.strip() for patch in selected_patches]
     else:
         selected_patches = [selected_patch]
 
@@ -1177,14 +1221,16 @@ def main(selected_patch=None, root_directory=None):
             print(
                 f"{YELLOW}START: {NC}Applying patch {patch}: {BLUE}{patches[patch][0]}{NC}"
             )
-            patches[patch][1](root_directory)
+            patches[patch][1]()
         else:
             print(f"{RED}ERROR: {NC}Invalid patch number: {patch}")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         prog="tgpatcher", description="Telegram Patches (Mod) Applier"
     )
+
     parser.add_argument(
         "--normal",
         help="Normal Mod Patches",
@@ -1200,7 +1246,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dir", help="Specify the directory", required=False, default="Telegram"
     )
+
     args = parser.parse_args()
+
     try:
         if args.normal:
             main(selected_patch="0", root_directory=args.dir)
