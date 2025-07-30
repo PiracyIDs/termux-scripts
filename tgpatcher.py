@@ -749,17 +749,9 @@ def main(selected: Optional[str] = None, root_dir_str: str = "Telegram") -> None
         log_error(f"Directory not found: {root_dir}")
         sys.exit(1)
 
-    # Define patch functions first
-    def do_all_normal():
-        apply_all(patches, root_dir, exclude=["0", "00", "17"])
-
-    def do_all_anti():
-        apply_all(patches, root_dir, exclude=["0", "00"])
-
-    # Now define patches — after the functions that reference it
     patches: Dict[str, Tuple[str, Callable]] = {
-        "0": ("Apply all patches [Except Anti Delete]", do_all_normal),
-        "00": ("Apply all patches [Including Anti Delete]", do_all_anti),
+        "0": ("Apply all patches [Except Anti Delete]", lambda: apply_all(root_dir, exclude=["0", "00", "17"])),
+        "00": ("Apply all patches [Including Anti Delete]", lambda: apply_all(root_dir, exclude=["0", "00"])),
         "1": ("Disable Signature Verification (Critical)", lambda: run_patch("Sig Check", modify_getCertificateSHA256Fingerprint, root_dir, "AndroidUtilities.smali")),
         "2": ("Make isPremium() → true", lambda: run_patch("isPremium", modify_isPremium, root_dir, "UserConfig.smali")),
         "3": ("Stories: isPremium(J) → true", lambda: run_patch("Stories Premium", modify_isPremium_stories, root_dir, "StoriesController.smali")),
@@ -802,15 +794,10 @@ def main(selected: Optional[str] = None, root_dir_str: str = "Telegram") -> None
             log_error(f"Invalid patch: {patch}")
 
 
-def apply_all(patches_dict: Dict[str, Tuple[str, Callable]], root_dir: Path, exclude: List[str]) -> None:
-    """Apply all patches from the given dictionary."""
-    for key, (desc, func) in patches_dict.items():
-        if key not in exclude:
-            log_step(f"Applying: {desc}")
-            try:
-                func()
-            except Exception as e:
-                log_error(f"Failed in patch '{key}': {e}")
+def apply_all(root_dir: Path, exclude: List[str]) -> None:
+    for k, (_, func) in main.__globals__["patches"].items():
+        if k not in exclude:
+            func()
 
 
 if __name__ == "__main__":
