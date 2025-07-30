@@ -750,8 +750,14 @@ def main(selected: Optional[str] = None, root_dir_str: str = "Telegram") -> None
         sys.exit(1)
 
     patches: Dict[str, Tuple[str, Callable]] = {
-        "0": ("Apply all patches [Except Anti Delete]", lambda: apply_all(root_dir, exclude=["0", "00", "17"])),
-        "00": ("Apply all patches [Including Anti Delete]", lambda: apply_all(root_dir, exclude=["0", "00"])),
+        "0": (
+            "Apply all patches [Except Anti Delete]",
+            lambda p=patches: apply_all(p, root_dir, exclude=["0", "00", "17"])
+        ),
+        "00": (
+            "Apply all patches [Including Anti Delete]",
+            lambda p=patches: apply_all(p, root_dir, exclude=["0", "00"])
+        ),
         "1": ("Disable Signature Verification (Critical)", lambda: run_patch("Sig Check", modify_getCertificateSHA256Fingerprint, root_dir, "AndroidUtilities.smali")),
         "2": ("Make isPremium() → true", lambda: run_patch("isPremium", modify_isPremium, root_dir, "UserConfig.smali")),
         "3": ("Stories: isPremium(J) → true", lambda: run_patch("Stories Premium", modify_isPremium_stories, root_dir, "StoriesController.smali")),
@@ -794,10 +800,15 @@ def main(selected: Optional[str] = None, root_dir_str: str = "Telegram") -> None
             log_error(f"Invalid patch: {patch}")
 
 
-def apply_all(root_dir: Path, exclude: List[str]) -> None:
-    for k, (_, func) in main.__globals__["patches"].items():
+def apply_all(patches_dict: Dict[str, Tuple[str, Callable]], root_dir: Path, exclude: List[str]) -> None:
+    """Apply all patches from the given dictionary."""
+    for k, (desc, func) in patches_dict.items():
         if k not in exclude:
-            func()
+            print(f"{YELLOW}START:{NC} Applying: {desc}")
+            try:
+                func()
+            except Exception as e:
+                print(f"{RED}ERROR:{NC} Failed in patch '{k}': {e}")
 
 
 if __name__ == "__main__":
