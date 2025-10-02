@@ -116,32 +116,42 @@ def recompile_apk(temp_dir: str, file_name: str) -> None:
 
 
 def find_next_id(root) -> str:
-    xml_ids = set()
-    pattern = re.compile(r"0x7f[0-9a-f]{6}")
-    base = None
+    xml_ids = []
+    pattern = re.compile(r"0x7f([0-9a-f]{2})([0-9a-f]{4})", re.IGNORECASE)
+    used_prefixes = set()
 
     for elem in root.findall("public"):
-        if elem.get("type") == "xml":
-            id_value = elem.get("id")
-            # print(id_value)
-            if not base:
-                base = int(id_value, 16) & 0xFFFF0000
-            if pattern.match(id_value):
-                xml_ids.add(int(id_value, 16))
+        id_value = elem.get("id")
+        if id_value and pattern.match(id_value):
+            used_prefixes.add((int(id_value, 16) & 0x00FF0000) >> 16)
+        if elem.get("type") == "xml" and id_value and pattern.match(id_value):
+            xml_ids.append(int(id_value, 16))
 
-    if not base:
-        base = 0x7F150000
+    if not xml_ids:
+        default_prefix = 0x14
+        if default_prefix in used_prefixes:
+            for candidate in range(0x10, 0x80):
+                if candidate not in used_prefixes:
+                    default_prefix = candidate
+                    break
+        base = 0x7F000000 | (default_prefix << 16)
+        return hex(base)
 
-    current = base
-    while current in xml_ids:
-        current += 1
-
-    return hex(current)
+    first_id = xml_ids[0]
+    type_prefix = (first_id & 0x00FF0000) >> 16
+    base = 0x7F000000 | (type_prefix << 16)
+    next_id = max(xml_ids) + 1
+    if ((next_id & 0x00FF0000) >> 16) != type_prefix:
+        next_id = base
+        while next_id in xml_ids:
+            next_id += 1
+    return hex(next_id)
 
 
 def modify_public_xml(xml_file: str) -> None:
-    import defusedxml.ElementTree as DET
     import xml.etree.ElementTree as ET  # skipcq
+
+    import defusedxml.ElementTree as DET
 
     tree = DET.parse(xml_file)
     root = tree.getroot()
@@ -173,8 +183,9 @@ def modify_public_xml(xml_file: str) -> None:
 
 
 def modify_xml(patch_path: str) -> None:
-    import defusedxml.ElementTree as DET
     import xml.etree.ElementTree as ET  # skipcq
+
+    import defusedxml.ElementTree as DET
 
     config_file_path = None
     for root, _, files in os.walk(patch_path):
@@ -246,8 +257,9 @@ def modify_xml(patch_path: str) -> None:
 
 
 def modify_manifest(manifest_path: str) -> None:
-    import defusedxml.ElementTree as DET
     import xml.etree.ElementTree as ET  # skipcq
+
+    import defusedxml.ElementTree as DET
 
     ET.register_namespace("android", "http://schemas.android.com/apk/res/android")
 
